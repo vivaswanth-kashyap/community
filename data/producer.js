@@ -1,21 +1,17 @@
 import amqp from "amqplib";
 
-const QUEUE_NAME = "post_processing";
+const EXCHANGE_NAME = "feed_events";
 
 const connectRabbitMQ = async () => {
 	const connection = await amqp.connect("amqp://localhost");
 	const channel = await connection.createChannel();
-	await channel.assertQueue(QUEUE_NAME, { durable: true });
+	await channel.assertExchange(EXCHANGE_NAME, "topic", { durable: true });
 	return channel;
 };
 
-export const sendToQueue = async (post) => {
+export const sendEvent = async (eventType, payload) => {
 	const channel = await connectRabbitMQ();
-
-	// Send the post to RabbitMQ for processing
-	channel.sendToQueue(QUEUE_NAME, Buffer.from(JSON.stringify(post)), {
-		persistent: true,
-	});
-
-	console.log(`post sent to queue: ${post._id}`);
+	const message = JSON.stringify({ eventType, payload });
+	channel.publish(EXCHANGE_NAME, eventType, Buffer.from(message));
+	console.log(`Event sent to exchange: ${eventType}`);
 };

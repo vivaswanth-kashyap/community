@@ -1,5 +1,4 @@
 import { Server } from "socket.io";
-
 let io;
 
 export const initializeSocketIO = (server) => {
@@ -18,6 +17,12 @@ export const initializeSocketIO = (server) => {
 	io.on("connection", (socket) => {
 		console.log("New client connected");
 
+		// Authenticate user and join their personal room
+		const userId = authenticateUser(socket);
+		if (userId) {
+			socket.join(userId);
+		}
+
 		socket.on("disconnect", () => {
 			console.log("Client disconnected");
 		});
@@ -26,10 +31,16 @@ export const initializeSocketIO = (server) => {
 	console.log("Socket.IO initialized");
 };
 
-export const emitNewPost = (post) => {
+//temp
+const authenticateUser = (socket) => {
+	return 2;
+};
+
+export const emitToUser = (userId, eventType, data) => {
 	if (io) {
-		io.emit("newPost", post);
+		console.log(`Emitting ${eventType} to user ${userId}`);
+		io.to(userId).emit(eventType, data);
 	} else {
-		console.warn("Socket.IO not initialized. Unable to emit new post.");
+		console.warn("Socket.IO not initialized. Unable to emit event.");
 	}
 };

@@ -1,8 +1,7 @@
 import { posts } from "../config/mongoCollections.js";
 import { ObjectId } from "mongodb";
-import { sendToQueue } from "./producer.js";
 import { getFollowing, getFollowers } from "./users.js";
-import { emitNewPost } from "../config/socketio.js";
+import { sendEvent } from "./producer.js";
 
 //// Add save post, W and L (as in "W take" for liking and "L take" for disliking), and also repuation changes feature after creating the user operations and routes
 
@@ -32,8 +31,7 @@ const newPost = async (uid, content) => {
 	const newId = insertInfo.insertedId.toString();
 	const post = await findPost(newId);
 
-	await sendToQueue(post);
-	emitNewPost(post);
+	await sendEvent("post.created", post);
 
 	return post;
 };

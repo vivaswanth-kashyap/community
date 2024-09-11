@@ -1,8 +1,10 @@
 import amqp from "amqplib";
 import { posts } from "../config/mongoCollections.js";
 import { ObjectId } from "mongodb";
+import { processFeedEvent } from "./feedUpdates.js";
 
-const QUEUE_NAME = "post_processing";
+const EXCHANGE_NAME = "feed_events";
+const QUEUE_NAME = "feed_updates";
 
 let connection;
 let channel;
@@ -10,14 +12,15 @@ let channel;
 const connectRabbitMQ = async () => {
 	connection = await amqp.connect("amqp://localhost");
 	channel = await connection.createChannel();
-	await channel.assertQueue(QUEUE_NAME, { durable: true });
+	await channel.assertExchange(EXCHANGE_NAME, "topic", { durable: true });
+	const q = await channel.assertQueue(QUEUE_NAME, { exclusive: false });
+	await channel.bindQueue(q.queue, EXCHANGE_NAME, "#");
 	return channel;
 };
 
 const extractHashtags = (str) => {
 	const hashtags = [];
 	let start = -1;
-
 	for (let i = 0; i < str.length; i++) {
 		if (str[i] === "#" && (i === 0 || str[i - 1] === " ")) {
 			start = i;
@@ -27,7 +30,6 @@ const extractHashtags = (str) => {
 			start = -1;
 		}
 	}
-
 	return hashtags;
 };
 
@@ -67,18 +69,38 @@ const processPost = async (post) => {
 			", "
 		)}, mentions: ${mentions.join(", ")}`
 	);
-	// will add logic for handling notifications
+	// Update the post object with extracted hashtags and mentions
+	post.hashtags = hashtags;
+	post.mentions = mentions;
+	return post;
 };
 
 export const startConsumer = async () => {
 	channel = await connectRabbitMQ();
-
-	console.log("post processing consumer started. Waiting for messages...");
+	console.log("Feed event consumer started. Waiting for messages...");
 
 	channel.consume(QUEUE_NAME, async (msg) => {
 		if (msg !== null) {
-			const post = JSON.parse(msg.content.toString());
-			await processPost(post);
+			const content = JSON.parse(msg.content.toString());
+			console.log("Received message:", content);
+
+			let eventType, payload;
+			if (content.eventType && content.payload) {
+				// New format
+				eventType = content.eventType;
+				payload = content.payload;
+			} else {
+				// Old format (assume it's a new post)
+				eventType = "post.created";
+				payload = content;
+			}
+
+			if (eventType === "post.created") {
+				// Process the post to extract hashtags and mentions
+				payload = await processPost(payload);
+			}
+
+			await processFeedEvent(eventType, payload);
 			channel.ack(msg);
 		}
 	});
